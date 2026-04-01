@@ -27,6 +27,17 @@ jobs:
       - name: Build Electrobun (canary)
         run: bun run electrobun build --env=canary
 
+      - name: Extract installer exe from Setup zip
+        shell: bash
+        run: |
+          cd artifacts
+          SETUP_ZIP=$(ls *-Setup-*.zip 2>/dev/null | head -1)
+          if [ -n "$SETUP_ZIP" ]; then
+            unzip -o "$SETUP_ZIP" "*.exe" -d extracted
+            mv extracted/*.exe Transcriber-Setup.exe
+            rm -rf extracted
+          fi
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
