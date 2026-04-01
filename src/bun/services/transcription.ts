@@ -1,11 +1,30 @@
 import OpenAI from "openai";
 import { readFile, writeFile, mkdtemp, readdir, rm } from "fs/promises";
-import { join } from "path";
+import { existsSync } from "fs";
+import { join, dirname } from "path";
 import { tmpdir } from "os";
 import { execFile } from "child_process";
 import { promisify } from "util";
 
 const execFileAsync = promisify(execFile);
+
+/**
+ * Resolve a binary path: bundled in bin/ > npm static package > system PATH
+ */
+function resolveBinary(name: string, npmFallback: () => string): string {
+	const ext = process.platform === "win32" ? ".exe" : "";
+	const bundledPath = join(dirname(process.argv0), `${name}${ext}`);
+	if (existsSync(bundledPath)) return bundledPath;
+
+	try {
+		return npmFallback();
+	} catch {}
+
+	return name;
+}
+
+const ffmpegPath = resolveBinary("ffmpeg", () => require("ffmpeg-static"));
+const ffprobePath = resolveBinary("ffprobe", () => require("ffprobe-static").path);
 
 const MAX_FILE_SIZE = 24 * 1024 * 1024; // 24MB to stay safely under Whisper's 25MB limit
 const CHUNK_DURATION_MINUTES = 10;
@@ -50,7 +69,7 @@ export class WhisperTranscriptionProvider implements TranscriptionProvider {
 		try {
 			// Normalize to mp3 - handles all codec/container issues
 			const normalizedFile = join(tempDir, "normalized.mp3");
-			await execFileAsync("ffmpeg", [
+			await execFileAsync(ffmpegPath, [
 				"-i",
 				filePath,
 				"-c:a",
@@ -96,7 +115,7 @@ export class WhisperTranscriptionProvider implements TranscriptionProvider {
 		normalizedFile: string,
 	): Promise<string> {
 		// Get duration of normalized file
-		const { stdout } = await execFileAsync("ffprobe", [
+		const { stdout } = await execFileAsync(ffprobePath, [
 			"-v", "error",
 			"-show_entries", "format=duration",
 			"-of", "default=noprint_wrappers=1:nokey=1",
@@ -114,7 +133,7 @@ export class WhisperTranscriptionProvider implements TranscriptionProvider {
 		const chunkFiles: string[] = [];
 		for (let i = 0; i < chunkCount; i++) {
 			const chunkFile = join(tempDir, `chunk_${String(i).padStart(3, "0")}.mp3`);
-			await execFileAsync("ffmpeg", [
+			await execFileAsync(ffmpegPath, [
 				"-i", normalizedFile,
 				"-ss", String(i * chunkSeconds),
 				"-t", String(chunkSeconds),

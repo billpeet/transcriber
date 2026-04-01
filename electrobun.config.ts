@@ -14,6 +14,8 @@ export default {
 		copy: {
 			"dist/index.html": "views/mainview/index.html",
 			"dist/assets": "views/mainview/assets",
+			"node_modules/ffmpeg-static/ffmpeg.exe": "bin/ffmpeg.exe",
+			"node_modules/ffprobe-static/bin/win32/x64/ffprobe.exe": "bin/ffprobe.exe",
 		},
 		// Ignore Vite output in watch mode — HMR handles view rebuilds separately
 		watchIgnore: ["dist/**"],
