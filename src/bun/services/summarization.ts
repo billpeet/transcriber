@@ -2,13 +2,11 @@ import { generateText } from "ai";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 
 let cachedApiKey: string | undefined;
-let openrouter = createOpenRouter({
-	apiKey: process.env.OPENROUTER_API_KEY,
-});
+let openrouter: ReturnType<typeof createOpenRouter> | null = null;
 
 function getOpenRouter(apiKey?: string) {
 	const effectiveKey = apiKey || process.env.OPENROUTER_API_KEY;
-	if (effectiveKey !== cachedApiKey) {
+	if (!openrouter || effectiveKey !== cachedApiKey) {
 		cachedApiKey = effectiveKey;
 		openrouter = createOpenRouter({ apiKey: effectiveKey });
 	}

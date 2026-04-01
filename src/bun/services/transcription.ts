@@ -139,8 +139,8 @@ export class WhisperTranscriptionProvider implements TranscriptionProvider {
 	}
 }
 
-// Default provider - swap this to change transcription backend
-let provider: TranscriptionProvider = new WhisperTranscriptionProvider();
+// Default provider - lazily created to avoid crashing when no API key is set
+let provider: TranscriptionProvider | null = null;
 let currentApiKey: string | undefined;
 
 export function setTranscriptionProvider(p: TranscriptionProvider) {
@@ -148,9 +148,8 @@ export function setTranscriptionProvider(p: TranscriptionProvider) {
 }
 
 export function getTranscriptionProvider(apiKey?: string): TranscriptionProvider {
-	// Recreate provider if the API key has changed
 	const effectiveKey = apiKey || undefined;
-	if (effectiveKey !== currentApiKey) {
+	if (!provider || effectiveKey !== currentApiKey) {
 		currentApiKey = effectiveKey;
 		provider = new WhisperTranscriptionProvider(effectiveKey);
 	}
