@@ -1,0 +1,37 @@
+{
+	"name": "electrobun-react-tailwind-vite",
+	"version": "1.0.0",
+	"description": "Electrobun app with React, Tailwind CSS, and Vite HMR",
+	"scripts": {
+		"start": "vite build && electrobun dev",
+		"dev": "electrobun dev --watch",
+		"dev:hmr": "concurrently \"bun run hmr\" \"bun run start\"",
+		"hmr": "vite --port 5173",
+		"build:canary": "vite build && electrobun build --env=canary",
+		"set-icon": "node_modules/rcedit/bin/rcedit-x64.exe build/dev-win-x64/Transcriber-dev/bin/launcher.exe --set-icon build/icon.ico && node_modules/rcedit/bin/rcedit-x64.exe build/dev-win-x64/Transcriber-dev/bin/bun.exe --set-icon build/icon.ico"
+	},
+	"dependencies": {
+		"@openrouter/ai-sdk-provider": "^2.3.3",
+		"ai": "^6.0.116",
+		"electrobun": "1.16.0",
+		"lucide-react": "^0.577.0",
+		"openai": "^6.32.0",
+		"react": "^18.3.1",
+		"react-dom": "^18.3.1",
+		"react-dropzone": "^15.0.0",
+		"react-markdown": "^10.1.0"
+	},
+	"devDependencies": {
+		"@tailwindcss/typography": "^0.5.19",
+		"@types/bun": "latest",
+		"@types/react": "^18.3.12",
+		"@types/react-dom": "^18.3.1",
+		"@vitejs/plugin-react": "^4.3.4",
+		"autoprefixer": "^10.4.20",
+		"concurrently": "^9.1.0",
+		"postcss": "^8.4.49",
+		"tailwindcss": "^3.4.16",
+		"typescript": "^5.7.2",
+		"vite": "^6.0.3"
+	}
+}

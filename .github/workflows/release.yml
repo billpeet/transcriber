@@ -1,0 +1,75 @@
+name: Build & Release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build frontend
+        run: bun run vite build
+
+      - name: Build Electrobun (canary)
+        run: bun run electrobun build --env=canary
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: win-x64
+          path: artifacts/
+
+  release:
+    needs: [build-windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts/
+          merge-multiple: true
+
+      - name: Get version from config
+        id: version
+        run: |
+          VERSION=$(grep -oP "version:\s*[\"']?\K[0-9]+\.[0-9]+\.[0-9]+" electrobun.config.ts | head -1)
+          SHORT_SHA=${GITHUB_SHA::8}
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "tag=v${VERSION}-${SHORT_SHA}" >> $GITHUB_OUTPUT
+
+      - name: Create or update latest release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Delete existing 'latest' release if it exists
+          gh release delete latest --yes 2>/dev/null || true
+          git push origin :refs/tags/latest 2>/dev/null || true
+
+          # Create new release with 'latest' tag
+          gh release create latest \
+            --title "Latest Build (${{ steps.version.outputs.version }})" \
+            --notes "Automated build from commit ${{ github.sha }}" \
+            --prerelease \
+            release-artifacts/*
+
+          # Also create a versioned tag release
+          gh release create "${{ steps.version.outputs.tag }}" \
+            --title "Build ${{ steps.version.outputs.tag }}" \
+            --notes "Automated build from commit ${{ github.sha }}" \
+            release-artifacts/* 2>/dev/null || true
