@@ -27,15 +27,14 @@ jobs:
       - name: Build Electrobun (canary)
         run: bun run electrobun build --env=canary
 
-      - name: Extract installer exe from Setup zip
+      - name: Prepare installer
         shell: bash
         run: |
           cd artifacts
+          # Rename the Setup zip to a friendlier name for download
           SETUP_ZIP=$(ls *-Setup-*.zip 2>/dev/null | head -1)
           if [ -n "$SETUP_ZIP" ]; then
-            unzip -o "$SETUP_ZIP" "*.exe" -d extracted
-            mv extracted/*.exe Transcriber-Setup.exe
-            rm -rf extracted
+            cp "$SETUP_ZIP" Transcriber-Setup-win-x64.zip
           fi
 
       - name: Upload artifacts
@@ -75,7 +74,15 @@ jobs:
           # Create new release with 'latest' tag
           gh release create latest \
             --title "Latest Build (${{ steps.version.outputs.version }})" \
-            --notes "Automated build from commit ${{ github.sha }}" \
+            --notes "$(cat <<'NOTES'
+          ## Download
+
+          **Windows:** Download `Transcriber-Setup-win-x64.zip`, extract, and run `Transcriber-Setup-canary.exe`.
+
+          ---
+          Automated build from commit ${{ github.sha }}
+          NOTES
+          )" \
             --prerelease \
             release-artifacts/*
 
