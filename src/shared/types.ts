@@ -98,6 +98,9 @@ export interface TranscriberApi {
 	updateSettings(partial: Partial<AppSettings>): Promise<AppSettings>;
 	getApiKeyStatus(): Promise<ApiKeyStatus>;
 
+	/** The application version (from package.json) */
+	getAppVersion(): Promise<string>;
+
 	// Auto-update
 	checkForUpdate(): Promise<UpdateState>;
 	applyUpdate(): Promise<{ success: boolean }>;

@@ -279,6 +279,10 @@ function registerIpcHandlers() {
 		}
 	});
 
+	ipcMain.handle("app:get-version", () => {
+		return app.getVersion();
+	});
+
 	ipcMain.handle("update:check", () => {
 		checkForUpdates();
 		return getUpdateState();

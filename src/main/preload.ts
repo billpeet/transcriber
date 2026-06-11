@@ -29,6 +29,8 @@ const api: TranscriberApi = {
 	updateSettings: (partial) => ipcRenderer.invoke("settings:update", partial),
 	getApiKeyStatus: () => ipcRenderer.invoke("settings:key-status"),
 
+	getAppVersion: () => ipcRenderer.invoke("app:get-version"),
+
 	checkForUpdate: () => ipcRenderer.invoke("update:check"),
 	applyUpdate: () => ipcRenderer.invoke("update:apply"),
 	getUpdateState: () => ipcRenderer.invoke("update:get-state"),

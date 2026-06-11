@@ -3,6 +3,7 @@ import { Minus, Square, X } from "lucide-react";
 import appIcon from "../icon.svg";
 
 interface TitleBarProps {
+	version?: string;
 	onMinimize: () => void;
 	onMaximize: () => void;
 	onClose: () => void;
@@ -18,7 +19,7 @@ const noDragStyle: CSSProperties = {
 	WebkitAppRegion: "no-drag",
 } as CSSProperties;
 
-export function TitleBar({ onMinimize, onMaximize, onClose }: TitleBarProps) {
+export function TitleBar({ version, onMinimize, onMaximize, onClose }: TitleBarProps) {
 	return (
 		<div
 			className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between bg-zinc-900 border-b border-zinc-800 select-none"
@@ -29,6 +30,9 @@ export function TitleBar({ onMinimize, onMaximize, onClose }: TitleBarProps) {
 				<span className="text-xs font-medium text-zinc-400">
 					Transcriber
 				</span>
+				{version && (
+					<span className="text-[10px] text-zinc-600">v{version}</span>
+				)}
 			</div>
 
 			<div className="flex h-full" style={noDragStyle}>

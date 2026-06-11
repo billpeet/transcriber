@@ -22,6 +22,7 @@ function App() {
 		openrouter: true,
 	});
 	const [settings, setSettings] = useState<AppSettings>({ ...DEFAULT_SETTINGS });
+	const [appVersion, setAppVersion] = useState("");
 	const [updateState, setUpdateState] = useState<UpdateState>({
 		available: false,
 		ready: false,
@@ -52,6 +53,7 @@ function App() {
 		const unsubscribeUpdate = api.onUpdateState(setUpdateState);
 
 		// Load persisted data on startup
+		api.getAppVersion().then(setAppVersion);
 		api.getSettings().then(setSettings);
 		api.getJobs().then(({ jobs }) => setFiles(jobs));
 		api.getUpdateState().then(setUpdateState);
@@ -271,6 +273,7 @@ function App() {
 		>
 			{settings.customTitleBar && (
 				<TitleBar
+					version={appVersion}
 					onMinimize={() => api.windowMinimize()}
 					onMaximize={() => api.windowMaximize()}
 					onClose={() => api.windowClose()}
