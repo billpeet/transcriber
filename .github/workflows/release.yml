@@ -32,21 +32,27 @@ jobs:
           echo "Building version ${VERSION}"
           npm version "${VERSION}" --no-git-tag-version
 
-      # A published (non-draft) GitHub release requires its tag to already
-      # exist, so push the tag before electron-builder creates the release.
-      - name: Push release tag
+      # Pre-create the tag and published release so electron-builder only
+      # ever uploads to an existing release. Letting electron-builder create
+      # the release itself races between parallel asset uploads and can
+      # produce duplicate releases with assets split across them.
+      - name: Create GitHub release
         shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION=$(node -p "require('./package.json').version")
-          git tag "v${VERSION}"
-          git push origin "v${VERSION}"
+          gh release create "v${VERSION}" \
+            --target "${GITHUB_SHA}" \
+            --title "Transcriber ${VERSION}" \
+            --notes "Automated build from commit ${GITHUB_SHA}"
 
       - name: Build renderer & main process
         run: npm run build
 
-      # Builds the NSIS installer and publishes it (plus latest.yml + blockmap,
+      # Builds the NSIS installer and uploads it (plus latest.yml + blockmap,
       # used by electron-updater for update checks and differential downloads)
-      # to a GitHub release tagged v<version>.
+      # to the release created above.
       - name: Package & publish
         run: npx electron-builder --win --publish always
         env:
