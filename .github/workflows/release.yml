@@ -32,6 +32,15 @@ jobs:
           echo "Building version ${VERSION}"
           npm version "${VERSION}" --no-git-tag-version
 
+      # A published (non-draft) GitHub release requires its tag to already
+      # exist, so push the tag before electron-builder creates the release.
+      - name: Push release tag
+        shell: bash
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          git tag "v${VERSION}"
+          git push origin "v${VERSION}"
+
       - name: Build renderer & main process
         run: npm run build
 
