@@ -1,14 +1,14 @@
-import { Database } from "bun:sqlite";
-import { Utils } from "electrobun/bun";
+import { DatabaseSync } from "node:sqlite";
+import { app } from "electron";
 import { mkdirSync, existsSync } from "fs";
 import { join } from "path";
 import type { AppSettings, TranscriptionFile } from "../../shared/types";
 import { DEFAULT_SETTINGS } from "../../shared/types";
 
-let db: Database;
+let db: DatabaseSync;
 
-export function initDatabase(): Database {
-	const dataDir = Utils.paths.userData;
+export function initDatabase(): DatabaseSync {
+	const dataDir = app.getPath("userData");
 	if (!existsSync(dataDir)) {
 		mkdirSync(dataDir, { recursive: true });
 	}
@@ -16,7 +16,7 @@ export function initDatabase(): Database {
 	const dbPath = join(dataDir, "transcriber.db");
 	console.log("Database path:", dbPath);
 
-	db = new Database(dbPath);
+	db = new DatabaseSync(dbPath);
 	db.exec("PRAGMA journal_mode = WAL");
 	db.exec("PRAGMA foreign_keys = ON");
 
@@ -101,16 +101,18 @@ export function getJob(id: string): TranscriptionFile | undefined {
 			`SELECT id, name, file_path, description, status, error, transcript, summary
 			 FROM jobs WHERE id = ?`,
 		)
-		.get(id) as {
-		id: string;
-		name: string;
-		file_path: string | null;
-		description: string;
-		status: string;
-		error: string | null;
-		transcript: string | null;
-		summary: string | null;
-	} | null;
+		.get(id) as
+		| {
+				id: string;
+				name: string;
+				file_path: string | null;
+				description: string;
+				status: string;
+				error: string | null;
+				transcript: string | null;
+				summary: string | null;
+		  }
+		| undefined;
 
 	if (!row) return undefined;
 
@@ -164,7 +166,7 @@ export function getAllJobs(): TranscriptionFile[] {
 export function getSetting(key: string): string | undefined {
 	const row = db
 		.prepare("SELECT value FROM settings WHERE key = ?")
-		.get(key) as { value: string } | null;
+		.get(key) as { value: string } | undefined;
 	return row?.value;
 }
 
@@ -181,7 +183,10 @@ export function loadSettings(): AppSettings {
 	const openrouterApiKey = getSetting("openrouterApiKey");
 	return {
 		summarizationModel: model ?? DEFAULT_SETTINGS.summarizationModel,
-		customTitleBar: customTitleBar === "true",
+		customTitleBar:
+			customTitleBar === undefined
+				? DEFAULT_SETTINGS.customTitleBar
+				: customTitleBar === "true",
 		openaiApiKey: openaiApiKey ?? DEFAULT_SETTINGS.openaiApiKey,
 		openrouterApiKey: openrouterApiKey ?? DEFAULT_SETTINGS.openrouterApiKey,
 	};
@@ -204,7 +209,7 @@ export function saveSettings(s: Partial<AppSettings>): AppSettings {
 }
 
 export function getFilesDir(): string {
-	const dir = join(Utils.paths.userData, "files");
+	const dir = join(app.getPath("userData"), "files");
 	if (!existsSync(dir)) {
 		mkdirSync(dir, { recursive: true });
 	}

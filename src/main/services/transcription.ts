@@ -1,7 +1,7 @@
 import OpenAI from "openai";
-import { readFile, writeFile, mkdtemp, readdir, rm } from "fs/promises";
+import { readFile, writeFile, mkdtemp, rm } from "fs/promises";
 import { existsSync } from "fs";
-import { join, dirname } from "path";
+import { join } from "path";
 import { tmpdir } from "os";
 import { execFile } from "child_process";
 import { promisify } from "util";
@@ -9,22 +9,36 @@ import { promisify } from "util";
 const execFileAsync = promisify(execFile);
 
 /**
- * Resolve a binary path: bundled in bin/ > npm static package > system PATH
+ * Native binaries shipped via npm packages (ffmpeg-static / ffprobe-static)
+ * live inside app.asar when packaged, but binaries can't be executed from
+ * within the archive. electron-builder unpacks them (see asarUnpack in
+ * electron-builder.yml) — rewrite the path to the unpacked location.
  */
-function resolveBinary(name: string, npmFallback: () => string): string {
-	const ext = process.platform === "win32" ? ".exe" : "";
-	const bundledPath = join(dirname(process.argv0), `${name}${ext}`);
-	if (existsSync(bundledPath)) return bundledPath;
+function unpackedPath(p: string): string {
+	return p.replace(/app\.asar([\\/])/, "app.asar.unpacked$1");
+}
 
+/**
+ * Resolve a binary path: npm static package (asar-unpacked) > system PATH
+ */
+function resolveBinary(name: string, npmResolver: () => string): string {
 	try {
-		return npmFallback();
+		const resolved = unpackedPath(npmResolver());
+		if (existsSync(resolved)) return resolved;
 	} catch {}
 
+	// Fall back to system PATH
 	return name;
 }
 
-const ffmpegPath = resolveBinary("ffmpeg", () => require("ffmpeg-static"));
-const ffprobePath = resolveBinary("ffprobe", () => require("ffprobe-static").path);
+const ffmpegPath = resolveBinary(
+	"ffmpeg",
+	() => require("ffmpeg-static") as string,
+);
+const ffprobePath = resolveBinary(
+	"ffprobe",
+	() => require("ffprobe-static").path as string,
+);
 
 const MAX_FILE_SIZE = 24 * 1024 * 1024; // 24MB to stay safely under Whisper's 25MB limit
 const CHUNK_DURATION_MINUTES = 10;
@@ -97,7 +111,7 @@ export class WhisperTranscriptionProvider implements TranscriptionProvider {
 		buffer: Buffer,
 		fileName: string,
 	): Promise<string> {
-		const file = new File([buffer], fileName, {
+		const file = new File([new Uint8Array(buffer)], fileName, {
 			type: "audio/mpeg",
 		});
 

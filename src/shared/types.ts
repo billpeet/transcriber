@@ -1,5 +1,3 @@
-import type { RPCSchema } from "electrobun/bun";
-
 export type FileStatus =
 	| "pending"
 	| "transcribing"
@@ -29,113 +27,105 @@ export interface AppSettings {
 
 export const DEFAULT_SETTINGS: AppSettings = {
 	summarizationModel: "google/gemini-2.5-flash",
-	customTitleBar: false,
+	customTitleBar: true,
 	openaiApiKey: "",
 	openrouterApiKey: "",
 };
+
+/**
+ * Whether each required API key is effectively configured —
+ * either saved in settings or provided via environment variable (dev).
+ */
+export interface ApiKeyStatus {
+	openai: boolean;
+	openrouter: boolean;
+}
 
 export interface UpdateState {
 	available: boolean;
 	ready: boolean;
 	checking: boolean;
 	downloading: boolean;
+	/** Download progress percentage (0-100) while downloading */
+	progress?: number;
 	error?: string;
 	version?: string;
 }
 
-export type AppRPC = {
-	bun: RPCSchema<{
-		requests: {
-			selectFiles: {
-				params: {};
-				response: { paths: string[] };
-			};
-			startProcessing: {
-				params: {
-					id: string;
-					filePath?: string;
-					fileData?: string;
-					fileName?: string;
-					description: string;
-				};
-				response: { success: boolean; error?: string };
-			};
-			addJob: {
-				params: { id: string; name: string; description: string };
-				response: { success: boolean };
-			};
-			updateDescription: {
-				params: { id: string; description: string };
-				response: { success: boolean };
-			};
-			removeJob: {
-				params: { id: string };
-				response: { success: boolean };
-			};
-			retryJob: {
-				params: { id: string };
-				response: { success: boolean; error?: string };
-			};
-			getJobs: {
-				params: {};
-				response: { jobs: TranscriptionFile[] };
-			};
-			getSettings: {
-				params: {};
-				response: AppSettings;
-			};
-			updateSettings: {
-				params: Partial<AppSettings>;
-				response: AppSettings;
-			};
-			checkForUpdate: {
-				params: {};
-				response: UpdateState;
-			};
-			applyUpdate: {
-				params: {};
-				response: { success: boolean };
-			};
-			getUpdateState: {
-				params: {};
-				response: UpdateState;
-			};
-			getAudioFile: {
-				params: { id: string };
-				response: { data: string; mimeType: string } | { data: null };
-			};
-			copyToClipboard: {
-				params: { text: string };
-				response: { success: boolean };
-			};
-			windowMinimize: {
-				params: {};
-				response: { success: boolean };
-			};
-			windowMaximize: {
-				params: {};
-				response: { success: boolean };
-			};
-			windowClose: {
-				params: {};
-				response: { success: boolean };
-			};
-		};
-		messages: {
-			ping: { msg: string };
-		};
-	}>;
-	webview: RPCSchema<{
-		requests: {};
-		messages: {
-			fileStatusUpdate: {
-				id: string;
-				status: FileStatus;
-				transcript?: string;
-				summary?: string;
-				error?: string;
-			};
-			updateStateChanged: UpdateState;
-		};
-	}>;
-};
+export interface FileStatusUpdate {
+	id: string;
+	status: FileStatus;
+	transcript?: string;
+	summary?: string;
+	error?: string;
+}
+
+export interface StartProcessingParams {
+	id: string;
+	filePath?: string;
+	fileData?: string;
+	fileName?: string;
+	description: string;
+}
+
+/**
+ * The API exposed to the renderer via the preload script (window.api).
+ * Implemented in src/main/preload.ts, handled in src/main/index.ts.
+ */
+export interface TranscriberApi {
+	// File dialogs & processing
+	selectFiles(): Promise<{ paths: string[] }>;
+	startProcessing(
+		params: StartProcessingParams,
+	): Promise<{ success: boolean; error?: string }>;
+
+	// Job persistence
+	addJob(params: {
+		id: string;
+		name: string;
+		description: string;
+	}): Promise<{ success: boolean }>;
+	updateDescription(params: {
+		id: string;
+		description: string;
+	}): Promise<{ success: boolean }>;
+	removeJob(params: { id: string }): Promise<{ success: boolean }>;
+	retryJob(params: { id: string }): Promise<{ success: boolean; error?: string }>;
+	getJobs(): Promise<{ jobs: TranscriptionFile[] }>;
+
+	// Settings
+	getSettings(): Promise<AppSettings>;
+	updateSettings(partial: Partial<AppSettings>): Promise<AppSettings>;
+	getApiKeyStatus(): Promise<ApiKeyStatus>;
+
+	// Auto-update
+	checkForUpdate(): Promise<UpdateState>;
+	applyUpdate(): Promise<{ success: boolean }>;
+	getUpdateState(): Promise<UpdateState>;
+
+	// Misc utilities
+	getAudioFile(params: {
+		id: string;
+	}): Promise<{ data: string; mimeType: string } | { data: null }>;
+	copyToClipboard(params: { text: string }): Promise<{ success: boolean }>;
+	/** Open an allowlisted https URL in the default browser */
+	openExternal(params: { url: string }): Promise<{ success: boolean }>;
+
+	// Window controls (custom titlebar)
+	windowMinimize(): void;
+	windowMaximize(): void;
+	windowClose(): void;
+
+	/** Resolve the on-disk path of a dropped File (empty string if unavailable) */
+	getPathForFile(file: File): string;
+
+	// Events (return an unsubscribe function)
+	onFileStatusUpdate(callback: (update: FileStatusUpdate) => void): () => void;
+	onUpdateState(callback: (state: UpdateState) => void): () => void;
+}
+
+declare global {
+	interface Window {
+		api: TranscriberApi;
+	}
+}

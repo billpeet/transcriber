@@ -2,7 +2,7 @@
 
 A desktop app for transcribing and summarizing audio files. Drop in audio files, get back structured transcripts and AI-generated summaries.
 
-Built with [Electrobun](https://electrobun.dev), React, and Tailwind CSS.
+Built with [Electron](https://www.electronjs.org), React, and Tailwind CSS.
 
 ## Features
 
@@ -11,19 +11,21 @@ Built with [Electrobun](https://electrobun.dev), React, and Tailwind CSS.
 - **Large file handling** — automatically chunks files over 24MB and stitches transcripts together
 - **Batch processing** — queue multiple files and transcribe them all at once
 - **Persistent storage** — jobs and settings are saved to a local SQLite database
-- **Auto-updates** — checks for new versions periodically and offers a one-click restart to update
+- **Custom title bar** — frameless window with custom titlebar (toggleable in Settings)
+- **Auto-updates** — checks GitHub Releases periodically, downloads updates in the background (with progress), and offers a one-click restart to install
 
 ## Setup
 
 ### Prerequisites
 
-- [Bun](https://bun.sh) runtime
-- [ffmpeg](https://ffmpeg.org) on your PATH (used for audio normalization and chunking)
+- [Node.js](https://nodejs.org) 22+
+
+ffmpeg/ffprobe are bundled via `ffmpeg-static`/`ffprobe-static` — no system install required (a system `ffmpeg` on PATH is used as a fallback).
 
 ### Install
 
 ```bash
-bun install
+npm install
 ```
 
 ### API Keys
@@ -52,28 +54,37 @@ OPENAI_API_KEY=sk-...
 OPENROUTER_API_KEY=sk-or-v1-...
 ```
 
-Keys set in the UI take priority over environment variables.
+Keys set in the UI take priority over environment variables. The `.env` file is only loaded in development.
 
 ## Development
 
 ```bash
-# Development with hot module replacement (recommended)
-bun run dev:hmr
-
-# Development without HMR (uses bundled assets)
-bun run dev
+npm run dev
 ```
 
-With HMR, the Vite dev server runs on `http://localhost:5173` and the app loads from it directly — React component changes update instantly without a full reload.
+This starts the Vite dev server (HMR) and launches Electron against it — React component changes update instantly without a full reload.
+
+Other useful scripts:
+
+```bash
+npm run typecheck   # TypeScript type-checking
+npm run build       # Build renderer (Vite) + main process (esbuild)
+```
 
 ## Building
 
 ```bash
-# Build for canary release
-bun run build:canary
+# Unpacked build for local inspection (release/win-unpacked/)
+npm run pack
+
+# Full Windows NSIS installer
+npm run dist
+
+# Build and publish a release to GitHub (requires GH_TOKEN)
+npm run release
 ```
 
-Build artifacts are output to `artifacts/`.
+Build artifacts are output to `release/`.
 
 ## Usage
 
@@ -91,35 +102,42 @@ Open Settings via the gear icon in the header:
 | OpenAI API Key | Your OpenAI key for Whisper transcription |
 | OpenRouter API Key | Your OpenRouter key for AI summarization |
 | Summarization Model | OpenRouter model ID (default: `google/gemini-2.5-flash`) |
-| Custom Title Bar | Use a custom frameless title bar instead of the OS native one |
+| Custom Title Bar | Use a custom frameless title bar instead of the OS native one (default: on, requires restart) |
 
 ### Updates
 
-The app checks for updates automatically every 30 minutes. When a new version is available and downloaded, a green banner appears at the top of the window with a **Restart to Update** button.
+The app checks GitHub Releases for updates 10 seconds after launch and every 30 minutes thereafter (packaged builds only). Updates download automatically in the background — a banner shows download progress, then offers a **Restart to Update** button when ready. Pending updates are also installed automatically when the app quits.
+
+Auto-update is powered by [electron-updater](https://www.electron.build/auto-update), using the `latest.yml` manifest and blockmap (differential download) that `electron-builder` publishes alongside each release.
 
 ## Project Structure
 
 ```
 src/
-  bun/                  # Main process (runs in Bun)
-    index.ts            # App entry point, RPC handlers, update logic
+  main/                 # Electron main process
+    index.ts            # App entry point, window creation, IPC handlers
+    preload.ts          # Context bridge exposing the typed window.api
+    updater.ts          # Auto-update via electron-updater (GitHub Releases)
     services/
       transcription.ts  # OpenAI Whisper integration with chunking
       summarization.ts  # OpenRouter AI summarization
-      database.ts       # SQLite persistence for jobs and settings
-  mainview/             # Frontend (React, loaded in webview)
+      database.ts       # SQLite persistence (node:sqlite) for jobs and settings
+  mainview/             # Frontend (React, loaded in the renderer)
     App.tsx             # Root component and state management
     components/
       FileUpload.tsx    # Drag-and-drop file input
       FileItem.tsx      # File card with audio player and results
       Settings.tsx      # Settings modal (API keys, model, appearance)
       UpdateBanner.tsx  # Auto-update notification banner
-      TitleBar.tsx      # Optional custom window title bar
+      TitleBar.tsx      # Custom window title bar
       ErrorBoundary.tsx # Error handling wrapper
   shared/
-    types.ts            # TypeScript types shared between main and view
+    types.ts            # Types shared between main, preload, and renderer
+scripts/
+  build-main.mjs        # esbuild bundling for main process + preload
+electron-builder.yml    # Packaging & publishing configuration
 ```
 
 ## CI/CD
 
-Pushes to `main` trigger a GitHub Actions workflow that builds the app and publishes artifacts to GitHub Releases. The auto-updater checks these releases for new versions.
+Pushes to `main` trigger a GitHub Actions workflow that builds the Windows installer with `electron-builder` and publishes it to GitHub Releases as `v<major>.<minor>.<run-number>`. Each release includes `latest.yml`, which the auto-updater uses to detect and download new versions.

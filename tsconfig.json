@@ -1,8 +1,8 @@
 {
 	"compilerOptions": {
-		"target": "ES2020",
+		"target": "ES2022",
 		"useDefineForClassFields": true,
-		"lib": ["ES2020", "DOM", "DOM.Iterable"],
+		"lib": ["ES2022", "DOM", "DOM.Iterable"],
 		"module": "ESNext",
 		"skipLibCheck": true,
 		"moduleResolution": "bundler",
@@ -14,8 +14,9 @@
 		"strict": true,
 		"noUnusedLocals": true,
 		"noUnusedParameters": true,
-		"noFallthroughCasesInSwitch": true
+		"noFallthroughCasesInSwitch": true,
+		"types": ["node", "vite/client"]
 	},
 	"include": ["src"],
-	"exclude": ["node_modules", "dist", "build", "../../package/dist"]
+	"exclude": ["node_modules", "dist", "dist-electron", "release"]
 }

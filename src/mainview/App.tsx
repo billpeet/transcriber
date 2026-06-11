@@ -1,21 +1,26 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Electroview } from "electrobun/view";
-import type { AppRPC, TranscriptionFile, FileStatus, UpdateState } from "../shared/types";
+import type { TranscriptionFile, UpdateState } from "../shared/types";
 import { FileUpload } from "./components/FileUpload";
 import { FileItem } from "./components/FileItem";
 import { Settings as SettingsComponent } from "./components/Settings";
+import { Onboarding } from "./components/Onboarding";
 import { TitleBar } from "./components/TitleBar";
 import { UpdateBanner } from "./components/UpdateBanner";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { DEFAULT_SETTINGS } from "../shared/types";
-import type { AppSettings } from "../shared/types";
+import type { ApiKeyStatus, AppSettings } from "../shared/types";
 import { Mic, Settings } from "lucide-react";
 
-let electroview: InstanceType<typeof Electroview> | null = null;
+const api = window.api;
 
 function App() {
 	const [files, setFiles] = useState<TranscriptionFile[]>([]);
 	const [showSettings, setShowSettings] = useState(false);
+	const [showOnboarding, setShowOnboarding] = useState(false);
+	const [keyStatus, setKeyStatus] = useState<ApiKeyStatus>({
+		openai: true,
+		openrouter: true,
+	});
 	const [settings, setSettings] = useState<AppSettings>({ ...DEFAULT_SETTINGS });
 	const [updateState, setUpdateState] = useState<UpdateState>({
 		available: false,
@@ -23,46 +28,46 @@ function App() {
 		checking: false,
 		downloading: false,
 	});
-	const electroviewRef = useRef(electroview);
 	const filesRef = useRef(files);
 	filesRef.current = files;
 
 	useEffect(() => {
-		if (electroviewRef.current) return;
-
-		const rpc = Electroview.defineRPC<AppRPC>({
-			handlers: {
-				requests: {},
-				messages: {
-					updateStateChanged: (state) => {
-						setUpdateState(state);
-					},
-					fileStatusUpdate: ({ id, status, transcript, summary, error }) => {
-						setFiles((prev) =>
-							prev.map((f) =>
-								f.id === id
-									? {
-											...f,
-											status: status as FileStatus,
-											...(transcript !== undefined && { transcript }),
-											...(summary !== undefined && { summary }),
-											...(error !== undefined && { error }),
-										}
-									: f,
-							),
-						);
-					},
-				},
+		const unsubscribeStatus = api.onFileStatusUpdate(
+			({ id, status, transcript, summary, error }) => {
+				setFiles((prev) =>
+					prev.map((f) =>
+						f.id === id
+							? {
+									...f,
+									status,
+									...(transcript !== undefined && { transcript }),
+									...(summary !== undefined && { summary }),
+									...(error !== undefined && { error }),
+								}
+							: f,
+					),
+				);
 			},
-		});
-
-		electroview = new Electroview({ rpc });
-		electroviewRef.current = electroview;
+		);
+		const unsubscribeUpdate = api.onUpdateState(setUpdateState);
 
 		// Load persisted data on startup
-		electroview.rpc.request.getSettings({}).then(setSettings);
-		electroview.rpc.request.getJobs({}).then(({ jobs }) => setFiles(jobs));
-		electroview.rpc.request.getUpdateState({}).then(setUpdateState);
+		api.getSettings().then(setSettings);
+		api.getJobs().then(({ jobs }) => setFiles(jobs));
+		api.getUpdateState().then(setUpdateState);
+
+		// First-run onboarding: show when API keys aren't configured yet
+		api.getApiKeyStatus().then((status) => {
+			setKeyStatus(status);
+			if (!status.openai || !status.openrouter) {
+				setShowOnboarding(true);
+			}
+		});
+
+		return () => {
+			unsubscribeStatus();
+			unsubscribeUpdate();
+		};
 	}, []);
 
 	const addFilesFromPaths = useCallback((paths: string[]) => {
@@ -76,56 +81,65 @@ function App() {
 		setFiles((prev) => [...prev, ...newFiles]);
 		// Persist each new job to DB
 		for (const file of newFiles) {
-			electroviewRef.current?.rpc.request.addJob({
-				id: file.id,
-				name: file.name,
-				description: "",
-			});
+			api.addJob({ id: file.id, name: file.name, description: "" });
 		}
 	}, []);
 
-	const addFilesFromDropped = useCallback((droppedFiles: File[]) => {
-		// Optimistic update — add files to UI immediately before reading data
-		const placeholders: TranscriptionFile[] = droppedFiles.map((f) => ({
-			id: crypto.randomUUID(),
-			name: f.name,
-			description: "",
-			status: "pending" as const,
-		}));
-		setFiles((prev) => [...prev, ...placeholders]);
+	const addFilesFromDropped = useCallback(
+		(droppedFiles: File[]) => {
+			// In Electron we can resolve real paths for dropped files via the preload
+			const withPaths = droppedFiles.map((f) => ({
+				file: f,
+				path: api.getPathForFile(f),
+			}));
 
-		// Persist to DB immediately (doesn't need file data)
-		for (const file of placeholders) {
-			electroviewRef.current?.rpc.request.addJob({
-				id: file.id,
-				name: file.name,
+			const pathFiles = withPaths.filter((f) => f.path).map((f) => f.path);
+			if (pathFiles.length > 0) {
+				addFilesFromPaths(pathFiles);
+			}
+
+			// Fallback for files without a resolvable path: read data in renderer
+			const dataFiles = withPaths.filter((f) => !f.path).map((f) => f.file);
+			if (dataFiles.length === 0) return;
+
+			// Optimistic update — add files to UI immediately before reading data
+			const placeholders: TranscriptionFile[] = dataFiles.map((f) => ({
+				id: crypto.randomUUID(),
+				name: f.name,
 				description: "",
-			});
-		}
+				status: "pending" as const,
+			}));
+			setFiles((prev) => [...prev, ...placeholders]);
 
-		// Read base64 data in background and attach to existing files
-		for (let i = 0; i < droppedFiles.length; i++) {
-			const f = droppedFiles[i];
-			const id = placeholders[i].id;
-			f.arrayBuffer().then((buffer) => {
-				const bytes = new Uint8Array(buffer);
-				let binary = "";
-				for (let j = 0; j < bytes.length; j++) {
-					binary += String.fromCharCode(bytes[j]);
-				}
-				const base64 = btoa(binary);
-				setFiles((prev) =>
-					prev.map((file) =>
-						file.id === id ? { ...file, fileData: base64 } : file,
-					),
-				);
-			});
-		}
-	}, []);
+			// Persist to DB immediately (doesn't need file data)
+			for (const file of placeholders) {
+				api.addJob({ id: file.id, name: file.name, description: "" });
+			}
+
+			// Read base64 data in background and attach to existing files
+			for (let i = 0; i < dataFiles.length; i++) {
+				const f = dataFiles[i];
+				const id = placeholders[i].id;
+				f.arrayBuffer().then((buffer) => {
+					const bytes = new Uint8Array(buffer);
+					let binary = "";
+					for (let j = 0; j < bytes.length; j++) {
+						binary += String.fromCharCode(bytes[j]);
+					}
+					const base64 = btoa(binary);
+					setFiles((prev) =>
+						prev.map((file) =>
+							file.id === id ? { ...file, fileData: base64 } : file,
+						),
+					);
+				});
+			}
+		},
+		[addFilesFromPaths],
+	);
 
 	const handleBrowse = useCallback(async () => {
-		if (!electroviewRef.current) return;
-		const { paths } = await electroviewRef.current.rpc.request.selectFiles({});
+		const { paths } = await api.selectFiles();
 		if (paths.length > 0) {
 			addFilesFromPaths(paths);
 		}
@@ -143,14 +157,14 @@ function App() {
 			setFiles((prev) =>
 				prev.map((f) => (f.id === id ? { ...f, description } : f)),
 			);
-			electroviewRef.current?.rpc.request.updateDescription({ id, description });
+			api.updateDescription({ id, description });
 		},
 		[],
 	);
 
 	const handleProcess = useCallback(async (id: string) => {
 		const file = filesRef.current.find((f) => f.id === id);
-		if (!file || !electroviewRef.current) return;
+		if (!file) return;
 
 		// Optimistic update — show transcribing immediately
 		setFiles((prev) =>
@@ -159,7 +173,7 @@ function App() {
 			),
 		);
 
-		await electroviewRef.current.rpc.request.startProcessing({
+		await api.startProcessing({
 			id: file.id,
 			filePath: file.path,
 			fileData: file.fileData,
@@ -172,7 +186,7 @@ function App() {
 		const pendingFiles = filesRef.current.filter(
 			(f) => f.status === "pending",
 		);
-		if (!electroviewRef.current || pendingFiles.length === 0) return;
+		if (pendingFiles.length === 0) return;
 
 		// Optimistic update — show all as transcribing immediately
 		const pendingIds = new Set(pendingFiles.map((f) => f.id));
@@ -185,7 +199,7 @@ function App() {
 		);
 
 		for (const file of pendingFiles) {
-			await electroviewRef.current.rpc.request.startProcessing({
+			await api.startProcessing({
 				id: file.id,
 				filePath: file.path,
 				fileData: file.fileData,
@@ -196,8 +210,6 @@ function App() {
 	}, []);
 
 	const handleRetry = useCallback(async (id: string) => {
-		if (!electroviewRef.current) return;
-
 		// Optimistic update — show processing immediately
 		setFiles((prev) =>
 			prev.map((f) =>
@@ -205,45 +217,42 @@ function App() {
 			),
 		);
 
-		await electroviewRef.current.rpc.request.retryJob({ id });
+		await api.retryJob({ id });
 	}, []);
 
 	const handleRemove = useCallback((id: string) => {
 		setFiles((prev) => prev.filter((f) => f.id !== id));
-		electroviewRef.current?.rpc.request.removeJob({ id });
+		api.removeJob({ id });
 	}, []);
 
 	const handleCopy = useCallback(async (text: string) => {
-		if (!electroviewRef.current) return;
-		await electroviewRef.current.rpc.request.copyToClipboard({ text });
+		await api.copyToClipboard({ text });
 	}, []);
 
 	const handleGetAudioFile = useCallback(async (id: string) => {
-		if (!electroviewRef.current) return { data: null } as { data: null };
-		return electroviewRef.current.rpc.request.getAudioFile({ id });
+		return api.getAudioFile({ id });
 	}, []);
 
 	const handleSaveSettings = useCallback(async (partial: Partial<AppSettings>) => {
-		if (!electroviewRef.current) return;
-		const updated = await electroviewRef.current.rpc.request.updateSettings(partial);
+		const updated = await api.updateSettings(partial);
 		setSettings(updated);
+		api.getApiKeyStatus().then(setKeyStatus);
+	}, []);
+
+	const handleOnboardingComplete = useCallback(
+		async (partial: Partial<AppSettings>) => {
+			await handleSaveSettings(partial);
+			setShowOnboarding(false);
+		},
+		[handleSaveSettings],
+	);
+
+	const handleOpenExternal = useCallback((url: string) => {
+		api.openExternal({ url });
 	}, []);
 
 	const handleRestartToUpdate = useCallback(async () => {
-		if (!electroviewRef.current) return;
-		await electroviewRef.current.rpc.request.applyUpdate({});
-	}, []);
-
-	const handleWindowMinimize = useCallback(() => {
-		electroviewRef.current?.rpc.request.windowMinimize({});
-	}, []);
-
-	const handleWindowMaximize = useCallback(() => {
-		electroviewRef.current?.rpc.request.windowMaximize({});
-	}, []);
-
-	const handleWindowClose = useCallback(() => {
-		electroviewRef.current?.rpc.request.windowClose({});
+		await api.applyUpdate();
 	}, []);
 
 	const pendingCount = files.filter((f) => f.status === "pending").length;
@@ -257,14 +266,14 @@ function App() {
 
 	return (
 		<div
-			className={`min-h-screen bg-zinc-950 text-zinc-100${settings.customTitleBar ? " rounded-lg overflow-hidden" : ""}`}
+			className="min-h-screen bg-zinc-950 text-zinc-100"
 			style={settings.customTitleBar ? { paddingTop: 36 } : undefined}
 		>
 			{settings.customTitleBar && (
 				<TitleBar
-					onMinimize={handleWindowMinimize}
-					onMaximize={handleWindowMaximize}
-					onClose={handleWindowClose}
+					onMinimize={() => api.windowMinimize()}
+					onMaximize={() => api.windowMaximize()}
+					onClose={() => api.windowClose()}
 				/>
 			)}
 
@@ -372,6 +381,14 @@ function App() {
 					settings={settings}
 					onSave={handleSaveSettings}
 					onClose={() => setShowSettings(false)}
+				/>
+			)}
+			{showOnboarding && !showSettings && (
+				<Onboarding
+					keyStatus={keyStatus}
+					onComplete={handleOnboardingComplete}
+					onSkip={() => setShowOnboarding(false)}
+					onOpenExternal={handleOpenExternal}
 				/>
 			)}
 		</div>

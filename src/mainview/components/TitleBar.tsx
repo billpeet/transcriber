@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import { Minus, Square, X } from "lucide-react";
 import appIcon from "../icon.svg";
 
@@ -7,11 +8,21 @@ interface TitleBarProps {
 	onClose: () => void;
 }
 
+const dragStyle: CSSProperties = {
+	height: 36,
+	// Electron: make the titlebar a window drag handle
+	WebkitAppRegion: "drag",
+} as CSSProperties;
+
+const noDragStyle: CSSProperties = {
+	WebkitAppRegion: "no-drag",
+} as CSSProperties;
+
 export function TitleBar({ onMinimize, onMaximize, onClose }: TitleBarProps) {
 	return (
 		<div
-			className="electrobun-webkit-app-region-drag fixed top-0 left-0 right-0 z-50 flex items-center justify-between bg-zinc-900 border-b border-zinc-800 select-none rounded-t-lg"
-			style={{ height: 36 }}
+			className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between bg-zinc-900 border-b border-zinc-800 select-none"
+			style={dragStyle}
 		>
 			<div className="flex items-center gap-2 pl-3">
 				<img src={appIcon} alt="" className="w-5 h-5 rounded" />
@@ -20,7 +31,7 @@ export function TitleBar({ onMinimize, onMaximize, onClose }: TitleBarProps) {
 				</span>
 			</div>
 
-			<div className="electrobun-webkit-app-region-no-drag flex h-full">
+			<div className="flex h-full" style={noDragStyle}>
 				<button
 					type="button"
 					onClick={onMinimize}

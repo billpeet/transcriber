@@ -1,8 +1,5 @@
 node_modules/
 dist/
-build/dev-*/
-build/canary-*/
-build/stable-*/
-artifacts/
+dist-electron/
+release/
 .env
-bun.lock

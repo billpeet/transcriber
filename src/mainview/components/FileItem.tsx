@@ -190,10 +190,6 @@ export function FileItem({
 	const [expanded, setExpanded] = useState(false);
 	const [copiedField, setCopiedField] = useState<string | null>(null);
 	const status = STATUS_CONFIG[file.status];
-	const isProcessing =
-		file.status === "transcribing" ||
-		file.status === "transcribed" ||
-		file.status === "summarizing";
 
 	const handleCopy = (text: string, field: string) => {
 		onCopy(text);

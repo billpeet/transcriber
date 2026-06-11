@@ -35,7 +35,13 @@ export function UpdateBanner({ updateState, onRestart }: UpdateBannerProps) {
 		return (
 			<div className="bg-blue-600/20 border-b border-blue-600/30 px-6 py-2 flex items-center gap-2">
 				<Loader2 className="w-3.5 h-3.5 text-blue-400 animate-spin" />
-				<span className="text-xs text-blue-300">Downloading update...</span>
+				<span className="text-xs text-blue-300">
+					Downloading update
+					{updateState.version ? ` v${updateState.version}` : ""}...
+					{updateState.progress !== undefined
+						? ` ${updateState.progress}%`
+						: ""}
+				</span>
 			</div>
 		);
 	}
