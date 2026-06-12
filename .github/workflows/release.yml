@@ -1,8 +1,9 @@
 name: Build & Release
 
+# Releases are deliberate: trigger from the Actions tab ("Run workflow")
+# or with `gh workflow run release.yml`. Runs against main.
 on:
-  push:
-    branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: write
